@@ -251,36 +251,25 @@ Camera::Camera (const std::string initFilePath) : camera_is_open_(false) {
     fs["camera_type"] >> camera_type_;
 
     if (camera_type_ == USB) {
-        USBInitSturct t;
-        fs["base_info"]["weight"] >> t.weight;
-        fs["base_info"]["height"] >> t.height;
-        fs["base_info"]["fps"] >> t.fps;
-        fs["pixel_format"] >> t.video_capture_api;
-        fs["index"] >> t.index;
-        t.fourcc.clear();
+        fs["base_info"]["weight"] >> usb_init_.weight;
+        fs["base_info"]["height"] >> usb_init_.height;
+        fs["base_info"]["fps"] >> usb_init_.fps;
+        fs["pixel_format"] >> usb_init_.video_capture_api;
+        fs["index"] >> usb_init_.index;
+        usb_init_.fourcc.clear();
         for (const auto &node: fs["fourcc"]) {
             std::string ch = node;
-            t.fourcc += ch;
+            usb_init_.fourcc += ch;
         }
 
-        cap_ = cv::VideoCapture(t.index, t.video_capture_api);
-        cap_.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc(
-                t.fourcc[0], t.fourcc[1], t.fourcc[2], t.fourcc[3]));
-        cap_.set(cv::CAP_PROP_FRAME_WIDTH, t.weight);
-        cap_.set(cv::CAP_PROP_FRAME_HEIGHT, t.height);
-        cap_.set(cv::CAP_PROP_FPS, t.fps);
-        if (cap_.isOpened()) camera_is_open_ = true;
     } else if (camera_type_ == HIK) {
-        HIKInitStruct t;
-        fs["base_info"]["weight"] >> t.weight;
-        fs["base_info"]["height"] >> t.height;
-        fs["base_info"]["fps"] >> t.fps;
-        fs["hik_info"]["camera_mode"] >> t.camera_mode;
-        fs["hik_info"]["exposure_time"] >> t.exposure_time;
-        fs["pixel_format"] >> t.video_capture_api;
-        hik_cam_ = new HK_Camera();
-        camera_is_open_ = hik_cam_->cameraInit(t);
-        if (camera_is_open_) hik_cam_->startCamera();
+        fs["base_info"]["weight"] >> hik_init_.weight;
+        fs["base_info"]["height"] >> hik_init_.height;
+        fs["base_info"]["fps"] >> hik_init_.fps;
+        fs["hik_info"]["camera_mode"] >> hik_init_.camera_mode;
+        fs["hik_info"]["exposure_time"] >> hik_init_.exposure_time;
+        fs["pixel_format"] >> hik_init_.video_capture_api;
+
     } else {
         std::cerr << "[CameraInit] : Unexpected Camera Type " << std::endl;
         return;
@@ -310,13 +299,12 @@ Camera::Camera (const std::string initFilePath) : camera_is_open_(false) {
     }
     // 关闭文件
     fs.release();
+    //打开相机
+    open();
 }
 
 Camera::~Camera() {
-    if (camera_type_ == HIK) {
-        hik_cam_->stopCamera();
-        delete hik_cam_;
-    }
+    stop();
 }
 
 bool Camera::getFrame(cv::Mat &img) {
@@ -326,7 +314,7 @@ bool Camera::getFrame(cv::Mat &img) {
         return false;
     }
     if (camera_type_ == USB) {
-        cap_ >> img;
+        cap_->read(img);
         return true;
     } else if (camera_type_ == HIK) {
         hik_cam_->getFrame(img);
@@ -401,4 +389,42 @@ double Camera::cameraCalibrate(const std::string imgPath) {
 
 bool Camera::isOpened() {
     return camera_is_open_;
+}
+
+int Camera::getFPS() {
+    if (camera_type_ == USB) {
+        return usb_init_.fps;
+    } else if (camera_type_ == HIK) {
+        return hik_init_.fps;
+    }
+}
+
+void Camera::open() {
+    if (camera_is_open_) return;
+    if (camera_type_ == USB) {
+        cap_ = new cv::VideoCapture(usb_init_.index, usb_init_.video_capture_api);
+        cap_->set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc(
+                usb_init_.fourcc[0], usb_init_.fourcc[1], usb_init_.fourcc[2], usb_init_.fourcc[3]));
+        cap_->set(cv::CAP_PROP_FRAME_WIDTH, usb_init_.weight);
+        cap_->set(cv::CAP_PROP_FRAME_HEIGHT, usb_init_.height);
+        cap_->set(cv::CAP_PROP_FPS, usb_init_.fps);
+        if (cap_->isOpened()) camera_is_open_ = true;
+    } else if (camera_type_ == HIK) {
+        hik_cam_ = new HK_Camera();
+        camera_is_open_ = hik_cam_->cameraInit(hik_init_);
+        if (camera_is_open_) hik_cam_->startCamera();
+    }
+}
+
+void Camera::stop() {
+    if (!camera_is_open_) return; 
+
+    if (camera_type_ == USB) {
+        delete cap_;
+        camera_is_open_ = false;
+    } else if (camera_is_open_ == HIK) {
+        hik_cam_->stopCamera();
+        delete hik_cam_;
+        camera_is_open_ = false;
+    }
 }

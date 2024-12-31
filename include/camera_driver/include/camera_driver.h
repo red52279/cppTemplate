@@ -69,6 +69,10 @@ public:
 
     bool getFrame(cv::Mat &img);
     bool isOpened();
+    int getFPS();
+    void open();
+    void stop();
+
     double cameraCalibrate(const std::string imgPath);
 
     cv::Vec3f coordinate_;
@@ -78,9 +82,11 @@ public:
 private:
     HK_Camera *hik_cam_;
     int camera_type_;
-    cv::VideoCapture cap_;
+    cv::VideoCapture *cap_;
     std::string init_file_path_;
     bool camera_is_open_;
+    HIKInitStruct hik_init_;
+    USBInitSturct usb_init_;
 };
 
 #endif //RADAR_STATION_CAMERADRIVE_H
